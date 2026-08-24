@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>审计日志 - SignalFlow</title>
+<style>
+body { font-family: "Microsoft YaHei", sans-serif; margin: 24px; color: #222; }
+nav a { margin-right: 14px; }
+table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+</style>
+</head>
+<body>
+<h1>SignalFlow 审计日志</h1>
+<nav>
+  <a href="/ui/intersections">路口监控</a>
+  <a href="/ui/plans">方案配置</a>
+  <a href="/ui/groups">协调组</a>
+  <a href="/ui/audit">审计日志</a>
+</nav>
+<table id="grid">
+  <thead><tr><th>时间</th><th>操作人</th><th>动作</th><th>目标</th><th>详情</th></tr></thead>
+  <tbody></tbody>
+</table>
+<script>
+async function load() {
+  const entries = await (await fetch('/api/audit?limit=100')).json();
+  const body = document.querySelector('#grid tbody');
+  body.innerHTML = '';
+  for (const e of entries) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${e.at}</td><td>${e.actor}</td><td>${e.action}</td>
+      <td>${e.target_type}/${e.target_id.slice(0, 8)}</td><td>${e.detail}</td>`;
+    body.appendChild(tr);
+  }
+}
+load();
+</script>
+</body>
+</html>
