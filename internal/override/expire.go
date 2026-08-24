@@ -36,7 +36,20 @@ func (s *Service) Expire(id string) (Override, error) {
 	if ov.Expired || ov.Cancelled {
 		return Override{}, ErrNoOverride
 	}
-	if _, err := s.phases.Force(ov.IntersectionID, ov.PhaseID, ov.Color); err != nil {
+	// Resolve the live plan at expiry time and hand control back to it, so a
+	// plan switched during the override is honored rather than replaying the
+	// takeover snapshot. FallbackToPlan clears the forced marker and restarts
+	// the machine at the plan's first phase in red, letting the control loop
+	// resume normal advancement.
+	current, err := s.plans.CurrentForIntersection(ov.IntersectionID)
+	if err != nil {
+		return Override{}, err
+	}
+	steps, err := s.plans.StepsFor(current.ID)
+	if err != nil {
+		return Override{}, err
+	}
+	if _, err := s.phases.FallbackToPlan(ov.IntersectionID, current.ID, steps); err != nil {
 		return Override{}, err
 	}
 	ov.Expired = true
