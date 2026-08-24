@@ -18,17 +18,17 @@ func (s *Service) Publish(id string) (Plan, error) {
 	if p.Status != StatusDraft {
 		return Plan{}, errors.New("only a draft plan can be published")
 	}
-	p.Status = StatusPublished
-	p.UpdatedAt = s.now()
-	if err := s.fs.WriteJSON(s.Path(p.ID), p); err != nil {
-		return Plan{}, err
-	}
 	snap := phase.Snapshot{
 		PlanID:  p.ID,
 		Version: p.Version,
 		Steps:   stepsOf(p.Phases),
 	}
 	if err := s.phaseConfigs.Save(snap); err != nil {
+		return Plan{}, err
+	}
+	p.Status = StatusPublished
+	p.UpdatedAt = s.now()
+	if err := s.fs.WriteJSON(s.Path(p.ID), p); err != nil {
 		return Plan{}, err
 	}
 	if s.audit != nil {
