@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>方案配置 - SignalFlow</title>
+<style>
+body { font-family: "Microsoft YaHei", sans-serif; margin: 24px; color: #222; }
+nav a { margin-right: 14px; }
+table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+form { margin-top: 12px; }
+input, textarea, button { margin-right: 8px; vertical-align: top; }
+</style>
+</head>
+<body>
+<h1>SignalFlow 方案配置</h1>
+<nav>
+  <a href="/ui/intersections">路口监控</a>
+  <a href="/ui/plans">方案配置</a>
+  <a href="/ui/groups">协调组</a>
+  <a href="/ui/audit">审计日志</a>
+</nav>
+<form id="create">
+  <input id="name" placeholder="方案名称" required>
+  <textarea id="phases" rows="3" cols="60" required>N-S,0,35,4,0&#10;E-W,1,25,4,10</textarea>
+  <button type="submit">创建方案</button>
+</form>
+<p>相位格式：PhaseID,顺序,绿灯秒,黄灯秒,偏移秒（每行一个）</p>
+<table id="grid">
+  <thead><tr><th>名称</th><th>状态</th><th>版本</th><th>相位</th><th>操作</th></tr></thead>
+  <tbody></tbody>
+</table>
+<script>
+async function load() {
+  const plans = await (await fetch('/api/plans')).json();
+  const body = document.querySelector('#grid tbody');
+  body.innerHTML = '';
+  for (const p of plans) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `<td>${p.name}</td><td>${p.status}</td><td>${p.version}</td>
+      <td>${p.phases.map(x => x.phase_id + ':' + x.green_seconds + 's').join(', ')}</td>
+      <td>
+        <button onclick="publish('${p.id}')">发布</button>
+        <button onclick="activate('${p.id}')">生效</button>
+        <button onclick="edit('${p.id}')">编辑</button>
+        <button onclick="commit('${p.id}')">提交编辑</button>
+      </td>`;
+    body.appendChild(tr);
+  }
+}
+function parsePhases() {
+  return document.querySelector('#phases').value.trim().split('\n').map(line => {
+    const parts = line.split(',').map(x => x.trim());
+    return {phase_id: parts[0], order: +parts[1], green_seconds: +parts[2], yellow_seconds: +parts[3], offset_seconds: +parts[4]};
+  });
+}
+async function api(path, options) {
+  const res = await fetch(path, options);
+  if (!res.ok) { alert(await res.text()); return null; }
+  return res.json();
+}
+document.querySelector('#create').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await api('/api/plans', { method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: document.querySelector('#name').value, phases: parsePhases()}) });
+  load();
+});
+async function publish(id) { await api(`/api/plans/${id}/publish`, { method: 'POST' }); load(); }
+async function activate(id) {
+  await api(`/api/plans/${id}/switch`, { method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({phases: parsePhases()}) });
+  load();
+}
+async function edit(id) {
+  await api(`/api/plans/${id}/edit`, { method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({phases: parsePhases()}) });
+  load();
+}
+async function commit(id) { await api(`/api/plans/${id}/commit`, { method: 'POST' }); load(); }
+load();
+</script>
+</body>
+</html>
