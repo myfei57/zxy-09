@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>路口监控 - SignalFlow</title>
+<style>
+body { font-family: "Microsoft YaHei", sans-serif; margin: 24px; color: #222; }
+nav a { margin-right: 14px; }
+table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+.degraded { color: #b00; font-weight: bold; }
+.normal { color: #070; }
+form { margin-top: 12px; }
+input, button { margin-right: 8px; }
+</style>
+</head>
+<body>
+<h1>SignalFlow 路口监控</h1>
+<nav>
+  <a href="/ui/intersections">路口监控</a>
+  <a href="/ui/plans">方案配置</a>
+  <a href="/ui/groups">协调组</a>
+  <a href="/ui/audit">审计日志</a>
+</nav>
+<form id="create">
+  <input id="name" placeholder="路口名称" required>
+  <button type="submit">注册路口</button>
+</form>
+<form id="activate">
+  <input id="intersectionId" placeholder="路口 ID" required>
+  <input id="planId" placeholder="方案 ID" required>
+  <button type="submit">启用路口</button>
+</form>
+<table id="grid">
+  <thead><tr><th>名称</th><th>状态</th><th>控制模式</th><th>方案</th><th>灯色</th><th>操作</th></tr></thead>
+  <tbody></tbody>
+</table>
+<script>
+async function load() {
+  const views = await (await fetch('/api/status')).json();
+  const body = document.querySelector('#grid tbody');
+  body.innerHTML = '';
+  for (const v of views) {
+    const tr = document.createElement('tr');
+    const statusClass = v.intersection.status === 'degraded' ? 'degraded' : 'normal';
+    const color = v.output ? v.output.color + (v.output.manual ? ' (手动)' : '') : '-';
+    tr.innerHTML = `<td>${v.intersection.name}</td>
+      <td class="${statusClass}">${v.intersection.status}</td>
+      <td>${v.intersection.control_mode || '-'}</td>
+      <td>${v.intersection.plan_id ? v.intersection.plan_id.slice(0, 8) : '-'}</td>
+      <td>${color}</td>
+      <td>
+        <button onclick="fault('${v.intersection.id}')">模拟故障</button>
+        <button onclick="recover('${v.intersection.id}')">恢复</button>
+        <button onclick="clearFault('${v.intersection.id}')">清除故障</button>
+      </td>`;
+    body.appendChild(tr);
+  }
+}
+async function api(path, options) {
+  const res = await fetch(path, options);
+  if (!res.ok) { alert(await res.text()); return null; }
+  return res.json();
+}
+document.querySelector('#create').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await api('/api/intersections', { method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: document.querySelector('#name').value}) });
+  load();
+});
+document.querySelector('#activate').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const id = document.querySelector('#intersectionId').value;
+  await api(`/api/intersections/${id}/activate`, { method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({plan_id: document.querySelector('#planId').value}) });
+  load();
+});
+async function fault(id) {
+  await api(`/api/intersections/${id}/fault`, { method: 'POST', headers: {'Content-Type': 'application/json'}, body: '{}' });
+  load();
+}
+async function recover(id) {
+  await api(`/api/intersections/${id}/recover`, { method: 'POST' });
+  load();
+}
+async function clearFault(id) {
+  await api(`/api/intersections/${id}/clear`, { method: 'POST' });
+  load();
+}
+load();
+</script>
+</body>
+</html>
