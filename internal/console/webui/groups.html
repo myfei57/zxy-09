@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>协调组 - SignalFlow</title>
+<style>
+body { font-family: "Microsoft YaHei", sans-serif; margin: 24px; color: #222; }
+nav a { margin-right: 14px; }
+table { border-collapse: collapse; width: 100%; margin-top: 16px; }
+th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; }
+form { margin-top: 12px; }
+input, button { margin-right: 8px; }
+</style>
+</head>
+<body>
+<h1>SignalFlow 协调组</h1>
+<nav>
+  <a href="/ui/intersections">路口监控</a>
+  <a href="/ui/plans">方案配置</a>
+  <a href="/ui/groups">协调组</a>
+  <a href="/ui/audit">审计日志</a>
+</nav>
+<form id="create">
+  <input id="name" placeholder="组名" required>
+  <input id="planId" placeholder="方案 ID" required>
+  <button type="submit">创建协调组</button>
+</form>
+<form id="join">
+  <input id="groupId" placeholder="组 ID" required>
+  <input id="memberId" placeholder="路口 ID" required>
+  <button type="submit">加入路口</button>
+</form>
+<table id="grid">
+  <thead><tr><th>名称</th><th>方案</th><th>成员</th><th>偏移</th><th>绿波</th></tr></thead>
+  <tbody></tbody>
+</table>
+<script>
+async function load() {
+  const groups = await (await fetch('/api/groups')).json();
+  const body = document.querySelector('#grid tbody');
+  body.innerHTML = '';
+  for (const g of groups) {
+    const tr = document.createElement('tr');
+    const offsets = Object.entries(g.offsets || {}).map(([k, v]) => k.slice(0, 8) + '=' + v + 's').join(', ');
+    tr.innerHTML = `<td>${g.name}</td><td>${g.plan_id.slice(0, 8)}</td>
+      <td>${(g.members || []).length}</td><td>${offsets}</td>
+      <td><button onclick="wave('${g.id}')">校验</button></td>`;
+    body.appendChild(tr);
+  }
+}
+async function api(path, options) {
+  const res = await fetch(path, options);
+  if (!res.ok) { alert(await res.text()); return null; }
+  return res.json();
+}
+document.querySelector('#create').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await api('/api/groups', { method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({name: document.querySelector('#name').value, plan_id: document.querySelector('#planId').value}) });
+  load();
+});
+document.querySelector('#join').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await api(`/api/groups/${document.querySelector('#groupId').value}/join`, { method: 'POST',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify({intersection_id: document.querySelector('#memberId').value}) });
+  load();
+});
+async function wave(id) {
+  const report = await api(`/api/groups/${id}/wave`, { method: 'GET' });
+  if (report) { alert('成员 ' + report.member_count + '，偏移覆盖 ' + report.offset_coverage + '，一致: ' + report.consistent); }
+  load();
+}
+load();
+</script>
+</body>
+</html>
