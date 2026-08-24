@@ -20,10 +20,18 @@ func (s *Service) Detect(intersectionID, kind string) (Record, error) {
 		Status:         StatusFaulted,
 		DetectedAt:     s.now(),
 	}
-	if _, err := s.intersections.SwitchToDegraded(intersectionID, rec.ID); err != nil {
+	// Persist the degradation record before touching the control plane. If the
+	// record write fails the intersection stays under normal control, so a
+	// failed write can never leave it dropped between modes with no durable
+	// record of why.
+	if err := s.save(rec); err != nil {
 		return Record{}, err
 	}
-	if err := s.save(rec); err != nil {
+	if _, err := s.intersections.SwitchToDegraded(intersectionID, rec.ID); err != nil {
+		// The control-plane transition failed after the record was made
+		// durable. Roll the record back so the next detection is not
+		// deduplicated against a fault the intersection never entered.
+		_ = s.fs.Remove(s.Path(rec.IntersectionID))
 		return Record{}, err
 	}
 	if s.audit != nil {
