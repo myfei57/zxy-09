@@ -8,9 +8,11 @@ import (
 
 // SwitchActive activates a published plan as a new generation carrying the
 // given phase configuration. The phase configuration snapshot is written
-// durably first, then the plan record; only after the new generation is on
-// disk are the coordination offsets refreshed, so every group recomputes
-// against the new offsets.
+// durably first, then the plan record; only after both the new generation
+// and its snapshot are on disk are the coordination offsets refreshed, so
+// every group recomputes against the new offsets. Refreshing before the
+// plan write would let ApplyPlanSwitch read the previous generation and
+// skip groups whose PlanVersion already matched the stale baseline.
 func (s *Service) SwitchActive(id string, phases []PhaseConfig) (Plan, error) {
 	p, err := s.Get(id)
 	if err != nil {
@@ -31,13 +33,19 @@ func (s *Service) SwitchActive(id string, phases []PhaseConfig) (Plan, error) {
 	p.Status = StatusActive
 	p.Version++
 	p.UpdatedAt = s.now()
+	// The new generation must be durable before coordination offsets are
+	// refreshed: ApplyPlanSwitch reads the plan from disk via OffsetsFor, so
+	// the plan record has to carry the new version and phases first. Refreshing
+	// before the write makes the groups read the previous generation, skip the
+	// recompute (their PlanVersion already matches the stale baseline), and keep
+	// running offsets from the prior scheme.
+	if err := s.fs.WriteJSON(s.Path(p.ID), p); err != nil {
+		return Plan{}, err
+	}
 	if s.coord != nil {
 		if err := s.coord.ApplyPlanSwitch(p.ID); err != nil {
 			return Plan{}, err
 		}
-	}
-	if err := s.fs.WriteJSON(s.Path(p.ID), p); err != nil {
-		return Plan{}, err
 	}
 	if _, err := s.phaseConfigs.Load(p.ID); err != nil {
 		return Plan{}, err
