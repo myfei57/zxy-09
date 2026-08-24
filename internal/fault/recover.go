@@ -14,10 +14,15 @@ func (s *Service) Recover(intersectionID string) error {
 	if !active {
 		return errors.New("intersection has no active fault to recover")
 	}
-	if _, err := s.intersections.RestoreNormal(intersectionID); err != nil {
+	// Persist the cleared record before leaving the degraded state. If the
+	// restore happened first and this write failed, the intersection would be
+	// back under normal control while the record still read StatusFaulted, so
+	// the next occurrence of the same fault would be deduplicated against the
+	// still-active record and silently missed.
+	if err := s.markCleared(rec); err != nil {
 		return err
 	}
-	if err := s.markCleared(rec); err != nil {
+	if _, err := s.intersections.RestoreNormal(intersectionID); err != nil {
 		return err
 	}
 	if s.audit != nil {
